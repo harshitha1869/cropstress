@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pickle
-import numpy as np
-import datetime
 import os
 
 from utils.preprocess import preprocess_input
@@ -22,27 +20,15 @@ CORS(app)
 # -------------------------------
 # Load ML artifacts
 # -------------------------------
-model = pickle.load(open(os.path.join(BASE_DIR, "models/logistic_model.pkl"), "rb"))
-scaler = pickle.load(open(os.path.join(BASE_DIR, "models/scaler.pkl"), "rb"))
-feature_columns = pickle.load(open(os.path.join(BASE_DIR, "models/feature_columns.pkl"), "rb"))
-label_encoder = pickle.load(open(os.path.join(BASE_DIR, "models/label_encoder.pkl"), "rb"))
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+model = pickle.load(open(os.path.join(MODEL_DIR, "logistic_model.pkl"), "rb"))
+scaler = pickle.load(open(os.path.join(MODEL_DIR, "scaler.pkl"), "rb"))
+feature_columns = pickle.load(open(os.path.join(MODEL_DIR, "feature_columns.pkl"), "rb"))
+label_encoder = pickle.load(open(os.path.join(MODEL_DIR, "label_encoder.pkl"), "rb"))
 
 # -------------------------------
-# Serve React Frontend
-# -------------------------------
-@app.route("/")
-def serve_react():
-    return send_from_directory(app.static_folder, "index.html")
-
-@app.route("/<path:path>")
-def serve_static_or_react(path):
-    file_path = os.path.join(app.static_folder, path)
-    if os.path.exists(file_path):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, "index.html")
-
-# -------------------------------
-# Prediction API
+# API FIRST (IMPORTANT)
 # -------------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -77,7 +63,21 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 # -------------------------------
+# REACT LAST
+# -------------------------------
+@app.route("/")
+def serve_react():
+    return send_from_directory(app.static_folder, "index.html")
+
+@app.route("/<path:path>")
+def serve_static_or_react(path):
+    file_path = os.path.join(app.static_folder, path)
+    if os.path.exists(file_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, "index.html")
+
+# -------------------------------
 # Run locally
 # -------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
