@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pickle
 import numpy as np
@@ -7,44 +7,49 @@ import os
 
 from utils.preprocess import preprocess_input
 
-app = Flask(__name__)
+# -------------------------------
+# App config
+# -------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    static_folder="build",
+    static_url_path=""
+)
 CORS(app)
 
 # -------------------------------
 # Load ML artifacts
 # -------------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 model = pickle.load(open(os.path.join(BASE_DIR, "models/logistic_model.pkl"), "rb"))
 scaler = pickle.load(open(os.path.join(BASE_DIR, "models/scaler.pkl"), "rb"))
 feature_columns = pickle.load(open(os.path.join(BASE_DIR, "models/feature_columns.pkl"), "rb"))
 label_encoder = pickle.load(open(os.path.join(BASE_DIR, "models/label_encoder.pkl"), "rb"))
 
 # -------------------------------
-# Health check
+# Serve React Frontend
 # -------------------------------
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({
-        "status": "Crop Stress Prediction API running",
-        "endpoint": "/predict"
-    })
+@app.route("/")
+def serve_react():
+    return send_from_directory(app.static_folder, "index.html")
+
+@app.route("/<path:path>")
+def serve_static_or_react(path):
+    file_path = os.path.join(app.static_folder, path)
+    if os.path.exists(file_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, "index.html")
 
 # -------------------------------
-# Prediction endpoint
+# Prediction API
 # -------------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json(force=True)
-        YEAR = datetime.datetime.now().year
 
-
-        # -------------------------------
-        # Build raw input (NO encoding here)
-        # -------------------------------
         input_data = {
-            
             "Day_Of_Year": data["Day_Of_Year"],
             "Avg_Temperature_C": data["Avg_Temperature_C"],
             "Consecutive_Dry_Days": data["Consecutive_Dry_Days"],
@@ -60,17 +65,9 @@ def predict():
             "Season": data["Season"]
         }
 
-        # -------------------------------
-        # Preprocess input (ONE-HOT + ALIGN)
-        # -------------------------------
         df = preprocess_input(input_data, feature_columns)
-
-        # -------------------------------
-        # Scale + Predict
-        # -------------------------------
         X_scaled = scaler.transform(df)
         prediction = model.predict(X_scaled)[0]
-
         result = label_encoder.inverse_transform([prediction])[0]
 
         return jsonify({"prediction": result})
@@ -79,6 +76,8 @@ def predict():
         print("🔥 Backend Error:", e)
         return jsonify({"error": str(e)}), 500
 
-
+# -------------------------------
+# Run locally
+# -------------------------------
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
