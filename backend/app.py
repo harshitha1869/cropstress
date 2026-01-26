@@ -2,11 +2,30 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pickle
 import os
+import boto3
+from io import BytesIO
 
 from utils.preprocess import preprocess_input
 
 # -------------------------------
-# App config
+# AWS S3 CONFIG
+# -------------------------------
+S3_BUCKET = "crop-stress-models-harshitha"
+S3_REGION = "ap-south-1"
+
+s3 = boto3.client(
+    "s3",
+    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+    region_name=S3_REGION
+)
+
+def load_from_s3(filename):
+    obj = s3.get_object(Bucket=S3_BUCKET, Key=filename)
+    return pickle.load(BytesIO(obj["Body"].read()))
+
+# -------------------------------
+# Flask App Config
 # -------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,14 +37,12 @@ app = Flask(
 CORS(app)
 
 # -------------------------------
-# Load ML artifacts
+# Load ML Artifacts FROM S3
 # -------------------------------
-MODEL_DIR = os.path.join(BASE_DIR, "models")
-
-model = pickle.load(open(os.path.join(MODEL_DIR, "logistic_model.pkl"), "rb"))
-scaler = pickle.load(open(os.path.join(MODEL_DIR, "scaler.pkl"), "rb"))
-feature_columns = pickle.load(open(os.path.join(MODEL_DIR, "feature_columns.pkl"), "rb"))
-label_encoder = pickle.load(open(os.path.join(MODEL_DIR, "label_encoder.pkl"), "rb"))
+model = load_from_s3("logistic_model.pkl")
+scaler = load_from_s3("scaler.pkl")
+feature_columns = load_from_s3("feature_columns.pkl")
+label_encoder = load_from_s3("label_encoder.pkl")
 
 # -------------------------------
 # API FIRST (IMPORTANT)
@@ -63,7 +80,7 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 # -------------------------------
-# REACT LAST
+# REACT FRONTEND (LAST)
 # -------------------------------
 @app.route("/")
 def serve_react():
@@ -77,7 +94,7 @@ def serve_static_or_react(path):
     return send_from_directory(app.static_folder, "index.html")
 
 # -------------------------------
-# Run locally
+# Run Locally
 # -------------------------------
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
