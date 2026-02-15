@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pickle
@@ -11,9 +10,15 @@ import hashlib
 
 from utils.preprocess import preprocess_input
 
-# -------------------------------
-# AWS CONFIG
-# -------------------------------
+# =====================================================
+# BASE PATH (IMPORTANT FOR RENDER)
+# =====================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_BUILD = os.path.join(BASE_DIR, "../frontend/build")
+
+# =====================================================
+# AWS S3 CONFIG
+# =====================================================
 S3_BUCKET = "crop-stress-models-harshitha"
 S3_REGION = "ap-south-1"
 
@@ -24,50 +29,58 @@ s3 = boto3.client(
     region_name=S3_REGION
 )
 
+# =====================================================
+# SAFE S3 LOADER
+# =====================================================
 def load_from_s3(filename):
-    obj = s3.get_object(Bucket=S3_BUCKET, Key=filename)
-    return pickle.load(BytesIO(obj["Body"].read()))
+    try:
+        print(f"Loading {filename} from S3...")
+        obj = s3.get_object(Bucket=S3_BUCKET, Key=filename)
+        return pickle.load(BytesIO(obj["Body"].read()))
+    except Exception as e:
+        print(f"❌ S3 LOAD ERROR: {filename} -> {e}")
+        raise e
 
-# -------------------------------
-# FLASK CONFIG
-# -------------------------------
-app = Flask(__name__, static_folder="build", static_url_path="")
+# =====================================================
+# FLASK APP
+# =====================================================
+app = Flask(__name__, static_folder=FRONTEND_BUILD, static_url_path="")
 CORS(app)
 
-# -------------------------------
+# =====================================================
 # LOAD MODEL ARTIFACTS
-# -------------------------------
-model = load_from_s3("model.pkl")   # Can be RandomForest now
+# =====================================================
+model = load_from_s3("model.pkl")
 scaler = load_from_s3("scaler.pkl")
 feature_columns = load_from_s3("feature_columns.pkl")
 label_encoder = load_from_s3("label_encoder.pkl")
 
-# -------------------------------
-# DSA STRUCTURES
-# -------------------------------
+print("✅ Model artifacts loaded successfully")
 
-# 1️⃣ Prediction Cache (HashMap)
+# =====================================================
+# DSA STRUCTURES
+# =====================================================
+
+# 1️⃣ HashMap cache
 prediction_cache = {}
 
-# 2️⃣ Rainfall history per location (Sliding Window)
+# 2️⃣ Sliding window rainfall per location
 rainfall_history = {}
 
-# 3️⃣ Heap for ranking stress
+# 3️⃣ Max heap for stress ranking
 stress_heap = []
 
-# -------------------------------
-# SLIDING WINDOW FEATURE
-# -------------------------------
+# =====================================================
+# SLIDING WINDOW FUNCTION
+# =====================================================
 def update_rainfall_history(location, rainfall_today):
     if location not in rainfall_history:
-        rainfall_history[location] = deque(maxlen=7)  # 7-day window
+        rainfall_history[location] = deque(maxlen=7)
 
     rainfall_history[location].append(rainfall_today)
 
-    # Rolling rainfall sum
     rolling_sum = sum(rainfall_history[location])
 
-    # Consecutive dry days
     consecutive_dry = 0
     for rain in reversed(rainfall_history[location]):
         if rain == 0:
@@ -77,9 +90,9 @@ def update_rainfall_history(location, rainfall_today):
 
     return rolling_sum, consecutive_dry
 
-# -------------------------------
-# PREDICT ROUTE
-# -------------------------------
+# =====================================================
+# PREDICTION API
+# =====================================================
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
@@ -88,12 +101,11 @@ def predict():
         location = data["Location"]
         rainfall_today = data["Daily_Rainfall_mm"]
 
-        # 🔥 Sliding window applied
         rolling_rain, consecutive_dry_days = update_rainfall_history(
             location, rainfall_today
         )
 
-        # 🔥 Create cache key
+        # HASH KEY FOR CACHE
         raw_string = str(sorted(data.items()))
         key = hashlib.md5(raw_string.encode()).hexdigest()
 
@@ -126,10 +138,10 @@ def predict():
         prediction = model.predict(X_scaled)[0]
         result = label_encoder.inverse_transform([prediction])[0]
 
-        # Save to cache
+        # CACHE SAVE
         prediction_cache[key] = result
 
-        # Rank stress (Heap)
+        # HEAP RANKING
         stress_score_map = {
             "Low": 1,
             "Moderate": 2,
@@ -145,11 +157,12 @@ def predict():
         })
 
     except Exception as e:
+        print("🔥 Prediction Error:", e)
         return jsonify({"error": str(e)}), 500
 
-# -------------------------------
+# =====================================================
 # TOP RISK LOCATIONS
-# -------------------------------
+# =====================================================
 @app.route("/top-risk", methods=["GET"])
 def get_top_risk():
     temp_heap = stress_heap.copy()
@@ -164,22 +177,22 @@ def get_top_risk():
 
     return jsonify(top_locations)
 
-# -------------------------------
-# FRONTEND SERVING
-# -------------------------------
+# =====================================================
+# REACT FRONTEND SERVING
+# =====================================================
 @app.route("/")
 def serve_react():
     return send_from_directory(app.static_folder, "index.html")
 
 @app.route("/<path:path>")
 def serve_static_or_react(path):
-    file_path = os.path.join(app.static_folder, path)
-    if os.path.exists(file_path):
+    full_path = os.path.join(app.static_folder, path)
+    if os.path.exists(full_path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
-# -------------------------------
-# RUN
-# -------------------------------
+# =====================================================
+# RUN LOCAL
+# =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
