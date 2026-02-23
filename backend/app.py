@@ -1,198 +1,260 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pickle
 import os
 import boto3
 from io import BytesIO
-from collections import deque
-import heapq
-import hashlib
-
+import logging
+import requests
+from datetime import datetime
 from utils.preprocess import preprocess_input
 
-# =====================================================
-# BASE PATH (IMPORTANT FOR RENDER)
-# =====================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FRONTEND_BUILD = os.path.join(BASE_DIR, "../frontend/build")
+
+
+from google.cloud import texttospeech
+
 
 # =====================================================
-# AWS S3 CONFIG
+# BASIC SETUP
 # =====================================================
+
+logging.basicConfig(level=logging.INFO)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+app = Flask(__name__)
+
+CORS(
+    app,
+    origins=["http://localhost:3000"],
+    allow_headers=["Content-Type"],
+    methods=["GET", "POST", "OPTIONS"]
+)
+
+@app.after_request
+def after_request(response):
+    response.headers.add("Access-Control-Allow-Origin", "http://localhost:3000")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    return response
+
+# =====================================================
+# LOAD MODEL (AWS OR LOCAL)
+# =====================================================
+
 S3_BUCKET = "crop-stress-models-harshitha"
 S3_REGION = "ap-south-1"
 
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-    region_name=S3_REGION
-)
+AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID")
+AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 
-# =====================================================
-# SAFE S3 LOADER
-# =====================================================
 def load_from_s3(filename):
+    logging.info(f"Loading {filename} from S3")
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+        region_name=S3_REGION
+    )
+    obj = s3.get_object(Bucket=S3_BUCKET, Key=filename)
+    return pickle.load(BytesIO(obj["Body"].read()))
+
+def load_local(filename):
+    path = os.path.join(LOCAL_MODEL_DIR, filename)
+    logging.info(f"Loading {filename} locally")
+    return pickle.load(open(path, "rb"))
+
+try:
+    if AWS_ACCESS_KEY and AWS_SECRET_KEY:
+        model = load_from_s3("model.pkl")
+        scaler = load_from_s3("scaler.pkl")
+        feature_columns = load_from_s3("feature_columns.pkl")
+        label_encoder = load_from_s3("label_encoder.pkl")
+    else:
+        model = load_local("model.pkl")
+        scaler = load_local("scaler.pkl")
+        feature_columns = load_local("feature_columns.pkl")
+        label_encoder = load_local("label_encoder.pkl")
+
+    logging.info("Model loaded successfully")
+
+except Exception as e:
+    logging.error("Model loading failed")
+    raise e
+
+# =====================================================
+# TELUGU ADVICE
+# =====================================================
+
+def get_telugu_advice(stress):
+    if stress == "High":
+        return "హెచ్చరిక. వెంటనే నీరు పెట్టండి."
+    elif stress == "Moderate":
+        return "జాగ్రత్త. పంటను గమనించండి."
+    return "మీ పంట సురక్షితంగా ఉంది."
+
+# =====================================================
+# WEATHER API CONFIG
+# =====================================================
+
+OPENWEATHER_API_KEY = "395baaae1fb6b6e1cbc267d4932db81b"
+
+# =====================================================
+# WEATHER + ML PREDICTION
+# =====================================================
+
+@app.route("/weather", methods=["GET"])
+def weather():
+
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+
+    if not lat or not lon:
+        return jsonify({"error": "Latitude and longitude required"}), 400
+
     try:
-        print(f"Loading {filename} from S3...")
-        obj = s3.get_object(Bucket=S3_BUCKET, Key=filename)
-        return pickle.load(BytesIO(obj["Body"].read()))
-    except Exception as e:
-        print(f"❌ S3 LOAD ERROR: {filename} -> {e}")
-        raise e
+        logging.info("Calling OpenWeather API...")
 
-# =====================================================
-# FLASK APP
-# =====================================================
-app = Flask(__name__, static_folder=FRONTEND_BUILD, static_url_path="")
-CORS(app)
-
-# =====================================================
-# LOAD MODEL ARTIFACTS
-# =====================================================
-model = load_from_s3("model.pkl")
-scaler = load_from_s3("scaler.pkl")
-feature_columns = load_from_s3("feature_columns.pkl")
-label_encoder = load_from_s3("label_encoder.pkl")
-
-print("✅ Model artifacts loaded successfully")
-
-# =====================================================
-# DSA STRUCTURES
-# =====================================================
-
-# 1️⃣ HashMap cache
-prediction_cache = {}
-
-# 2️⃣ Sliding window rainfall per location
-rainfall_history = {}
-
-# 3️⃣ Max heap for stress ranking
-stress_heap = []
-
-# =====================================================
-# SLIDING WINDOW FUNCTION
-# =====================================================
-def update_rainfall_history(location, rainfall_today):
-    if location not in rainfall_history:
-        rainfall_history[location] = deque(maxlen=7)
-
-    rainfall_history[location].append(rainfall_today)
-
-    rolling_sum = sum(rainfall_history[location])
-
-    consecutive_dry = 0
-    for rain in reversed(rainfall_history[location]):
-        if rain == 0:
-            consecutive_dry += 1
-        else:
-            break
-
-    return rolling_sum, consecutive_dry
-
-# =====================================================
-# PREDICTION API
-# =====================================================
-@app.route("/predict", methods=["POST"])
-def predict():
-    try:
-        data = request.get_json(force=True)
-
-        location = data["Location"]
-        rainfall_today = data["Daily_Rainfall_mm"]
-
-        rolling_rain, consecutive_dry_days = update_rainfall_history(
-            location, rainfall_today
+        url = (
+            "https://api.openweathermap.org/data/2.5/weather"
+            f"?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric&lang=te"
         )
 
-        # HASH KEY FOR CACHE
-        raw_string = str(sorted(data.items()))
-        key = hashlib.md5(raw_string.encode()).hexdigest()
+        res = requests.get(url, timeout=(3, 5))
+        res = res.json()
 
-        if key in prediction_cache:
-            return jsonify({
-                "prediction": prediction_cache[key],
-                "cached": True
-            })
+        logging.info("Weather API response received")
 
+        if "main" not in res:
+            return jsonify({"error": "Weather API failed", "details": res}), 400
+
+        # WEATHER DATA
+        temp = res["main"]["temp"]
+        humidity = res["main"]["humidity"]
+        feels_like = res["main"]["feels_like"]
+        pressure = res["main"]["pressure"]
+
+        wind_speed = res["wind"]["speed"]
+        wind_deg = res["wind"].get("deg", 0)
+
+        weather_main = res["weather"][0]["main"]
+        description = res["weather"][0]["description"]
+
+        visibility = res.get("visibility", 0)
+        rain = res.get("rain", {}).get("1h", 0)
+
+        location = res.get("name")
+        country = res["sys"]["country"]
+
+        sunrise = datetime.fromtimestamp(res["sys"]["sunrise"]).strftime("%H:%M")
+        sunset = datetime.fromtimestamp(res["sys"]["sunset"]).strftime("%H:%M")
+
+        # ML PREDICTION
         input_data = {
-            "Day_Of_Year": data["Day_Of_Year"],
-            "Avg_Temperature_C": data["Avg_Temperature_C"],
-            "Consecutive_Dry_Days": consecutive_dry_days,
-            "Daily_Rainfall_mm": rainfall_today,
-            "Rolling_7Day_Rainfall": rolling_rain,
-            "Diurnal_Temp_Range_C": data["Max_Temperature_C"] - data["Min_Temperature_C"],
-            "Heat_Stress_Index": data["Heat_Stress_Index"],
-            "Max_Temperature_C": data["Max_Temperature_C"],
-            "Min_Temperature_C": data["Min_Temperature_C"],
-            "Relative_Humidity_%": data["Relative_Humidity"],
-            "Soil_Moisture_Index": data["Soil_Moisture_Index"],
-            "Solar_Radiation_MJ_m2": data["Solar_Radiation"],
-            "Location": location,
-            "Season": data["Season"]
+            "Day_Of_Year": 150,
+            "Avg_Temperature_C": temp,
+            "Consecutive_Dry_Days": 2,
+            "Daily_Rainfall_mm": rain,
+            "Rolling_7Day_Rainfall": rain,
+            "Diurnal_Temp_Range_C": 5,
+            "Heat_Stress_Index": temp * 0.1,
+            "Max_Temperature_C": temp + 2,
+            "Min_Temperature_C": temp - 2,
+            "Relative_Humidity_%": humidity,
+            "Soil_Moisture_Index": 0.4,
+            "Solar_Radiation_MJ_m2": 15,
+            "Location": "GPS",
+            "Season": "Summer"
         }
 
         df = preprocess_input(input_data, feature_columns)
         X_scaled = scaler.transform(df)
-
-        prediction = model.predict(X_scaled)[0]
-        result = label_encoder.inverse_transform([prediction])[0]
-
-        # CACHE SAVE
-        prediction_cache[key] = result
-
-        # HEAP RANKING
-        stress_score_map = {
-            "Low": 1,
-            "Moderate": 2,
-            "High": 3
-        }
-
-        score = stress_score_map.get(result, 0)
-        heapq.heappush(stress_heap, (-score, location))
+        pred = model.predict(X_scaled)[0]
+        stress = label_encoder.inverse_transform([pred])[0]
 
         return jsonify({
-            "prediction": result,
-            "cached": False
+            "location": location,
+            "country": country,
+            "temperature": temp,
+            "feels_like": feels_like,
+            "humidity": humidity,
+            "pressure": pressure,
+            "wind_speed": wind_speed,
+            "wind_direction": wind_deg,
+            "weather": weather_main,
+            "description": description,
+            "visibility": visibility,
+            "sunrise": sunrise,
+            "sunset": sunset,
+            "rain_1h": rain,
+            "stressLevel": stress,
+            "teluguAdvice": get_telugu_advice(stress)
         })
 
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "Weather service slow"}), 504
+
     except Exception as e:
-        print("🔥 Prediction Error:", e)
         return jsonify({"error": str(e)}), 500
 
 # =====================================================
-# TOP RISK LOCATIONS
+# PREDICT ONLY (GREEN BUTTON)
 # =====================================================
-@app.route("/top-risk", methods=["GET"])
-def get_top_risk():
-    temp_heap = stress_heap.copy()
-    top_locations = []
 
-    while temp_heap and len(top_locations) < 5:
-        score, location = heapq.heappop(temp_heap)
-        top_locations.append({
-            "location": location,
-            "stress_score": -score
+@app.route("/predict", methods=["POST"])
+def predict():
+
+    try:
+        data = request.json
+
+        temp = data.get("temperature")
+        humidity = data.get("humidity")
+        rain = data.get("rain_1h", 0)
+
+        input_data = {
+            "Day_Of_Year": 150,
+            "Avg_Temperature_C": temp,
+            "Consecutive_Dry_Days": 2,
+            "Daily_Rainfall_mm": rain,
+            "Rolling_7Day_Rainfall": rain,
+            "Diurnal_Temp_Range_C": 5,
+            "Heat_Stress_Index": temp * 0.1,
+            "Max_Temperature_C": temp + 2,
+            "Min_Temperature_C": temp - 2,
+            "Relative_Humidity_%": humidity,
+            "Soil_Moisture_Index": 0.4,
+            "Solar_Radiation_MJ_m2": 15,
+            "Location": "GPS",
+            "Season": "Summer"
+        }
+
+        df = preprocess_input(input_data, feature_columns)
+        X_scaled = scaler.transform(df)
+        pred = model.predict(X_scaled)[0]
+        stress = label_encoder.inverse_transform([pred])[0]
+
+        return jsonify({
+            "stressLevel": stress,
+            "teluguAdvice": get_telugu_advice(stress)
         })
 
-    return jsonify(top_locations)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # =====================================================
-# REACT FRONTEND SERVING
+# HEALTH CHECK
 # =====================================================
-@app.route("/")
-def serve_react():
-    return send_from_directory(app.static_folder, "index.html")
 
-@app.route("/<path:path>")
-def serve_static_or_react(path):
-    full_path = os.path.join(app.static_folder, path)
-    if os.path.exists(full_path):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, "index.html")
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+    
 
 # =====================================================
-# RUN LOCAL
+# RUN SERVER
 # =====================================================
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

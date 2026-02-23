@@ -1,15 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { AreaProvider } from "./context/AreaContext";
-import "./index.css";
+import { BrowserRouter } from "react-router-dom";
+import "./index.css";   // ✅ ADD THIS LINE (IMPORTANT)
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
+ReactDOM.createRoot(document.getElementById("root")).render(
   <BrowserRouter>
-    <AreaProvider>
-      <App />
-    </AreaProvider>
+    <App />
   </BrowserRouter>
 );
+
