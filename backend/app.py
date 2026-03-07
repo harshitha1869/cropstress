@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pickle
 import os
@@ -9,11 +9,6 @@ import requests
 from datetime import datetime
 from utils.preprocess import preprocess_input
 
-
-
-
-
-
 # =====================================================
 # BASIC SETUP
 # =====================================================
@@ -23,21 +18,10 @@ logging.basicConfig(level=logging.INFO)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCAL_MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-app = Flask(__name__)
+# Serve React build
+app = Flask(__name__, static_folder="build", static_url_path="")
 
-CORS(
-    app,
-    origins=["http://localhost:3000"],
-    allow_headers=["Content-Type"],
-    methods=["GET", "POST", "OPTIONS"]
-)
-
-@app.after_request
-def after_request(response):
-    response.headers.add("Access-Control-Allow-Origin", "http://localhost:3000")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
-    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-    return response
+CORS(app)
 
 # =====================================================
 # LOAD MODEL (AWS OR LOCAL)
@@ -114,22 +98,16 @@ def weather():
         return jsonify({"error": "Latitude and longitude required"}), 400
 
     try:
-        logging.info("Calling OpenWeather API...")
-
         url = (
             "https://api.openweathermap.org/data/2.5/weather"
             f"?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric&lang=te"
         )
 
-        res = requests.get(url, timeout=(3, 5))
-        res = res.json()
-
-        logging.info("Weather API response received")
+        res = requests.get(url, timeout=(3, 5)).json()
 
         if "main" not in res:
             return jsonify({"error": "Weather API failed", "details": res}), 400
 
-        # WEATHER DATA
         temp = res["main"]["temp"]
         humidity = res["main"]["humidity"]
         feels_like = res["main"]["feels_like"]
@@ -150,7 +128,6 @@ def weather():
         sunrise = datetime.fromtimestamp(res["sys"]["sunrise"]).strftime("%H:%M")
         sunset = datetime.fromtimestamp(res["sys"]["sunset"]).strftime("%H:%M")
 
-        # ML PREDICTION
         input_data = {
             "Day_Of_Year": 150,
             "Avg_Temperature_C": temp,
@@ -192,14 +169,11 @@ def weather():
             "teluguAdvice": get_telugu_advice(stress)
         })
 
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "Weather service slow"}), 504
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # =====================================================
-# PREDICT ONLY (GREEN BUTTON)
+# PREDICT ONLY
 # =====================================================
 
 @app.route("/predict", methods=["POST"])
@@ -245,26 +219,31 @@ def predict():
 # =====================================================
 # HEALTH CHECK
 # =====================================================
-@app.route("/")
-def home():
-    return jsonify({
-        "message": "Crop Stress Prediction API running",
-        "endpoints": [
-            "/weather",
-            "/predict",
-            "/health"
-        ]
-    })
 
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
 
-    
+# =====================================================
+# SERVE REACT FRONTEND
+# =====================================================
+
+@app.route("/")
+def serve_react():
+    return send_from_directory(app.static_folder, "index.html")
+
+@app.route("/<path:path>")
+def serve_static(path):
+    file_path = os.path.join(app.static_folder, path)
+
+    if os.path.exists(file_path):
+        return send_from_directory(app.static_folder, path)
+
+    return send_from_directory(app.static_folder, "index.html")
 
 # =====================================================
 # RUN SERVER
 # =====================================================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
