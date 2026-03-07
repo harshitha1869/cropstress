@@ -1,5 +1,5 @@
 export async function predictCropDamage(formData) {
-  const response = await fetch("/predict", {
+  const response = await fetch("http://localhost:4000/predict ", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

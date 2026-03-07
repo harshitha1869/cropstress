@@ -31,17 +31,23 @@ export default function ResultScreen({ result, onBack, goTips }) {
   // ✅ AUTO SPEAK + STORE MESSAGE
   useEffect(() => {
 
-    const message = `
-    పంట ఒత్తిడి స్థాయి ${safeResult}.
-    ${data.msg}
-    వ్యవసాయ సూచనలు తెలుసుకోవడానికి కింద ఉన్న నీలం రంగు బటన్‌ను నొక్కండి.
-    `;
+  const message = `
+  పంట ఒత్తిడి స్థాయి ${safeResult}.
+  ${data.msg}
+  వ్యవసాయ సూచనలు తెలుసుకోవడానికి కింద ఉన్న నీలం రంగు బటన్‌ను నొక్కండి.
+  `;
 
-    setLastSpeech(message);
+  setLastSpeech(message);
 
-    setTimeout(() => speak(message), 500);
+  const timer = setTimeout(() => speak(message), 500);
 
-  }, [safeResult]);
+  // 🔥 CLEANUP WHEN PAGE CHANGES
+  return () => {
+    clearTimeout(timer);
+    window.speechSynthesis.cancel();
+  };
+
+}, [safeResult]);
 
   // ✅ LISTEN AGAIN
   const speakResult = () => {

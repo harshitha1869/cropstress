@@ -18,7 +18,11 @@ export default function Screen1Assistant({ onLocationClick }) {
       () => setIsTalking(false)
     );
   };
-
+useEffect(() => {
+  return () => {
+    window.speechSynthesis.cancel();
+  };
+}, []);
 
   return (
     <div

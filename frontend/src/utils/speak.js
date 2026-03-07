@@ -1,22 +1,19 @@
 let teluguVoice = null;
 let voicesReady = false;
 
-// Load voices safely
 function loadVoices() {
   const voices = speechSynthesis.getVoices();
-
   if (!voices.length) return;
 
   teluguVoice =
     voices.find(v => v.lang === "te-IN") ||
     voices.find(v => v.lang.includes("te")) ||
-    voices.find(v => v.lang.includes("hi")) || // fallback Indian voice
+    voices.find(v => v.lang.includes("hi")) ||
     voices[0];
 
   voicesReady = true;
 }
 
-// Wait for browser to load voices
 speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
 
@@ -26,8 +23,7 @@ export const speak = (text, onStart, onEnd) => {
     setTimeout(() => speak(text, onStart, onEnd), 300);
     return;
   }
-
-  speechSynthesis.cancel();
+  window.speechSynthesis.cancel();
 
   const msg = new SpeechSynthesisUtterance(text);
 
@@ -39,5 +35,5 @@ export const speak = (text, onStart, onEnd) => {
   if (onStart) msg.onstart = onStart;
   if (onEnd) msg.onend = onEnd;
 
-  speechSynthesis.speak(msg);
+  window.speechSynthesis.speak(msg);
 };

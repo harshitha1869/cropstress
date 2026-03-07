@@ -1,11 +1,9 @@
 import { useEffect } from "react";
-import { speak } from "../utils/speak";
+
 
 export default function LoadingScreen(){
 
-  useEffect(()=>{
-    speak("మీ పంట పరిస్థితి విశ్లేషించబడుతోంది. దయచేసి వేచి ఉండండి.");
-  },[]);
+  
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">

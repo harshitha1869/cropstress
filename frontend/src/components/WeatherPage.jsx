@@ -7,10 +7,26 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
   const [lang, setLang] = useState("te");
 
   if (!weather) return null;
+  const normalizeString = (str) =>
+    str?.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-  // =================================================
-  // WEATHER DESCRIPTION TELUGU MAP
-  // =================================================
+  const normalizedLocation = normalizeString(weather.location);
+  const locationTeluguMap = {
+    "Bhimavaram": "భీమవరం",
+    "Hyderabad": "హైదరాబాద్",
+    "Vijayawada": "విజయవాడ"
+  };
+
+  const locationTelugu =
+    locationTeluguMap[normalizedLocation] || normalizedLocation;
+  const countryTeluguMap = {
+    "IN": "ఇండియా",
+    "US": "అమెరికా",
+    "UK": "యునైటెడ్ కింగ్డమ్"
+  };
+
+  const countryTelugu =
+    countryTeluguMap[weather.country] || weather.country;
   const weatherTeluguMap = {
     "clear sky": "ఆకాశం నిర్మలం",
     "few clouds": "కొన్ని మేఘాలు",
@@ -26,28 +42,14 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
     weatherTeluguMap[weather.description?.toLowerCase()] ||
     weather.description;
 
-  // =================================================
-  // LOCATION TELUGU PRONUNCIATION FIX
-  // =================================================
-  const locationTeluguMap = {
-    "Bhimavaram": "భీమవరం",
-    "Hyderabad": "హైదరాబాద్",
-    "Vijayawada": "విజయవాడ"
-  };
-
-  const locationTelugu =
-    locationTeluguMap[weather.location] || weather.location;
-
-  // =================================================
-  // SPEAK WEATHER
-  // =================================================
+  
   const speakWeather = () => {
 
     if (lang === "te") {
 
       const text = `
       రైతు గారు.
-      ఈ రోజు మీ ప్రాంతం ${locationTelugu} లో వాతావరణ వివరాలు ఇలా ఉన్నాయి.
+      ఈ రోజు మీ ప్రాంతం ${locationTelugu}, ${countryTelugu} లో వాతావరణ వివరాలు ఇలా ఉన్నాయి.
 
       ఉష్ణోగ్రత ${weather.temperature} డిగ్రీలు.
       అనుభూతి ఉష్ణోగ్రత ${weather.feels_like} డిగ్రీలు.
@@ -67,7 +69,7 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
 
       const text = `
       Hello farmer.
-      Today's weather in ${weather.location} is as follows.
+      Today's weather in ${weather.location}, ${weather.country} is as follows.
 
       Temperature is ${weather.temperature} degrees Celsius.
       Feels like ${weather.feels_like} degrees.
@@ -85,14 +87,23 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
   };
 
   // =================================================
-  // AUTO SPEAK WHEN PAGE LOADS
+  // AUTO SPEAK WHEN PAGE LOADS OR LANGUAGE CHANGES
   // =================================================
   useEffect(() => {
-    setTimeout(speakWeather, 800);
-  }, []);
+
+    const timer = setTimeout(() => {
+      speakWeather();
+    }, 800);
+
+    return () => {
+      clearTimeout(timer);
+      window.speechSynthesis.cancel();
+    };
+
+  }, [lang]);
 
   // =================================================
-  // LABELS
+  // LABELS (UNCHANGED)
   // =================================================
   const labels = {
     te: {
@@ -128,7 +139,7 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
   const t = labels[lang];
 
   // =================================================
-  // UI
+  // UI (UNCHANGED)
   // =================================================
   return (
     <div
@@ -139,7 +150,6 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
 
       <div className="relative z-10 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
 
-        {/* LANGUAGE BUTTON */}
         <div className="flex justify-end mb-4">
           <button
             onClick={() => setLang(lang === "te" ? "en" : "te")}
@@ -154,7 +164,7 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
         </h2>
 
         <div className="space-y-2 text-lg">
-          <p>📍 {t.location}: {lang === "te" ? locationTelugu : weather.location}, {weather.country}</p>
+          <p>📍 {t.location}: {lang === "te" ? locationTelugu : weather.location}, {lang === "te" ? countryTelugu : weather.country}</p>
           <p>🌡 {t.temp}: {weather.temperature} °C</p>
           <p>🤒 {t.feels}: {weather.feels_like} °C</p>
           <p>💧 {t.humidity}: {weather.humidity} %</p>

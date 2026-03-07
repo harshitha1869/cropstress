@@ -1,14 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { speak } from "../utils/speak";
 import farmBg from "../assets/crop.jpg";
 
 export default function FarmingTips({ onBack, goHelp }) {
 
   const [lang, setLang] = useState("te");
-
-  // ================================
-  // 🌱 FARMING TIPS DATA
-  // ================================
 
   const tips = {
     te: [
@@ -21,7 +17,6 @@ export default function FarmingTips({ onBack, goHelp }) {
       "పంట మధ్య దూరం సరైన విధంగా ఉంచండి.",
       "సేంద్రియ ఎరువులు ఉపయోగించడం మంచిది."
     ],
-
     en: [
       "Water crops at the right time regularly.",
       "Check soil moisture frequently.",
@@ -36,23 +31,51 @@ export default function FarmingTips({ onBack, goHelp }) {
 
   const currentTips = tips[lang];
 
-  // ================================
-  // 🔊 SPEAK ALL TIPS
-  // ================================
+  // ✅ AUTO SPEAK WHEN PAGE LOADS OR LANGUAGE CHANGES
+  useEffect(() => {
 
+    const text =
+      lang === "te"
+        ? `
+        రైతు గారు, ముఖ్యమైన వ్యవసాయ సూచనలు వినండి.
+        ${currentTips.join(" ")}
+        మీకు ఏమైనా సహాయం కావాలంటే కింద ఉన్న నీలం రంగు సహాయం బటన్‌ను నొక్కండి.
+        `
+        : `
+        Farmer, here are some important farming tips.
+        ${currentTips.join(" ")}
+        If you need further assistance, press the blue help button below.
+        `;
+
+    const timer = setTimeout(() => {
+      speak(text);
+    }, 600);
+
+    return () => {
+      clearTimeout(timer);
+      window.speechSynthesis.cancel();
+    };
+
+  }, [lang]);
+
+  // ✅ BUTTON SPEAK (Manual Trigger)
   const speakTips = () => {
 
     const text =
       lang === "te"
-        ? `రైతు గారు, ముఖ్యమైన వ్యవసాయ సూచనలు వినండి. ${currentTips.join(". ")}`
-        : `Farmer, here are some important farming tips. ${currentTips.join(". ")}`;
+        ? `
+        రైతు గారు, ముఖ్యమైన వ్యవసాయ సూచనలు వినండి.
+        ${currentTips.join(" ")}
+        మీకు ఏమైనా సహాయం కావాలంటే కింద ఉన్న నీలం రంగు సహాయం బటన్‌ను నొక్కండి.
+        `
+        : `
+        Farmer, here are some important farming tips.
+        ${currentTips.join(" ")}
+        If you need further assistance, press the blue help button below.
+        `;
 
     speak(text);
   };
-
-  // ================================
-  // UI
-  // ================================
 
   return (
     <div
@@ -63,7 +86,6 @@ export default function FarmingTips({ onBack, goHelp }) {
 
       <div className="relative z-10 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
 
-        {/* LANGUAGE SWITCH */}
         <div className="flex justify-end mb-4">
           <button
             onClick={() => setLang(lang === "te" ? "en" : "te")}
@@ -73,23 +95,17 @@ export default function FarmingTips({ onBack, goHelp }) {
           </button>
         </div>
 
-        {/* TITLE */}
         <h2 className="text-2xl font-bold text-green-700 mb-5">
           {lang === "te" ? "🌾 వ్యవసాయ సూచనలు" : "🌾 Farming Tips"}
         </h2>
 
-        {/* TIPS LIST */}
         <div className="space-y-3 text-lg text-left">
-
           {currentTips.map((tip, index) => (
             <p key={index}>✅ {tip}</p>
           ))}
-
         </div>
 
-        {/* BUTTONS */}
         <div className="flex gap-3 justify-center mt-6">
-
           <button
             onClick={speakTips}
             className="bg-black text-white px-4 py-2 rounded"
@@ -103,13 +119,13 @@ export default function FarmingTips({ onBack, goHelp }) {
           >
             {lang === "te" ? "వెనక్కి" : "Back"}
           </button>
-          <button
-    onClick={goHelp}
-    className="bg-blue-600 text-white px-5 py-2 rounded-lg"
-  >
-    ❓ సహాయం
-  </button>
 
+          <button
+            onClick={goHelp}
+            className="bg-blue-600 text-white px-5 py-2 rounded-lg"
+          >
+            ❓ సహాయం
+          </button>
         </div>
 
       </div>
