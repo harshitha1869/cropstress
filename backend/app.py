@@ -245,6 +245,16 @@ def predict():
 # =====================================================
 # HEALTH CHECK
 # =====================================================
+@app.route("/")
+def home():
+    return jsonify({
+        "message": "Crop Stress Prediction API running",
+        "endpoints": [
+            "/weather",
+            "/predict",
+            "/health"
+        ]
+    })
 
 @app.route("/health")
 def health():
