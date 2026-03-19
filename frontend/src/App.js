@@ -8,6 +8,9 @@ import FarmingTips from "./components/FarmingTips";
 import HelpPage from "./components/HelpPage";
 import { speak } from "./utils/speak";
 
+// ✅ ADD THIS LINE
+const BASE_URL = process.env.REACT_APP_API_URL || "";
+
 function App() {
 
   const [screen, setScreen] = useState("welcome");
@@ -15,37 +18,30 @@ function App() {
   const [prediction, setPrediction] = useState(null);
 
   // =============================================
-  // 🔊 INSTANT GREETING WHEN APP OPENS
+  // 🔊 GREETING
   // =============================================
- useEffect(() => {
+  useEffect(() => {
 
-  const welcomeText =
-    "నమస్కారం రైతు గారు. మీ పంట ఆరోగ్యాన్ని తెలుసుకోవడానికి నేను మీకు సహాయం చేస్తాను.దయచేసి కింద ఉన్న బటన్ నొక్కండి.";
+    const welcomeText =
+      "నమస్కారం రైతు గారు. మీ పంట ఆరోగ్యాన్ని తెలుసుకోవడానికి నేను మీకు సహాయం చేస్తాను.దయచేసి కింద ఉన్న బటన్ నొక్కండి.";
 
-  const voiceUnlocked = localStorage.getItem("voiceUnlocked");
+    const voiceUnlocked = localStorage.getItem("voiceUnlocked");
 
-  // ✅ If already unlocked → speak automatically
-  if (voiceUnlocked === "true") {
-    setTimeout(() => speak(welcomeText), 600);
-    return;
-  }
+    if (voiceUnlocked === "true") {
+      setTimeout(() => speak(welcomeText), 600);
+      return;
+    }
 
-  // ❗ First time → wait for user interaction
-  const unlockVoice = () => {
+    const unlockVoice = () => {
+      localStorage.setItem("voiceUnlocked", "true");
+      speak(welcomeText);
+      window.removeEventListener("click", unlockVoice);
+    };
 
-    localStorage.setItem("voiceUnlocked", "true");
+    window.addEventListener("click", unlockVoice);
+    return () => window.removeEventListener("click", unlockVoice);
 
-    speak(welcomeText);
-
-    window.removeEventListener("click", unlockVoice);
-  };
-
-  window.addEventListener("click", unlockVoice);
-
-  return () => window.removeEventListener("click", unlockVoice);
-
-}, []);
-  
+  }, []);
 
   // =============================================
   // 📍 GET LOCATION + WEATHER
@@ -68,7 +64,8 @@ function App() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-        fetch(`http://localhost:5000/weather?lat=${lat}&lon=${lon}`)
+        // ✅ FIXED HERE
+        fetch(`${BASE_URL}/weather?lat=${lat}&lon=${lon}`)
           .then(res => res.json())
           .then(data => {
             setWeatherData(data);
@@ -99,7 +96,8 @@ function App() {
     speak("మీ పంట ఒత్తిడి స్థాయిని విశ్లేషిస్తున్నాం");
     setScreen("loading");
 
-    fetch("http://localhost:5000/predict", {
+    // ✅ FIXED HERE
+    fetch(`${BASE_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(weatherData)
@@ -117,39 +115,36 @@ function App() {
   };
 
   // =============================================
-  // 🧭 NAVIGATION FUNCTIONS
+  // NAVIGATION
   // =============================================
   const goHome = () => setScreen("welcome");
 
-  
   const goWeather = () => {
+    if (weatherData) {
+      setScreen("weather");
+      return;
+    }
+    speak("ముందు మీ ప్రాంతాన్ని గుర్తించండి");
+    setScreen("welcome");
+  };
 
-  if (weatherData) {
-    setScreen("weather");
-    return;
-  }
-
-  speak("ముందు మీ ప్రాంతాన్ని గుర్తించండి");
-  setScreen("welcome");
-};
   const goResult = () => {
+    if (prediction) {
+      setScreen("result");
+      return;
+    }
 
-  if (prediction) {
-    setScreen("result");
-    return;
-  }
+    if (weatherData) {
+      speak("ముందు పంట ఒత్తిడి అంచనా వేస్తున్నాం");
+      predictStress();
+      return;
+    }
 
-  if (weatherData) {
-    speak("ముందు పంట ఒత్తిడి అంచనా వేస్తున్నాం");
-    predictStress();   // auto predict
-    return;
-  }
+    speak("ముందు మీ ప్రాంతాన్ని గుర్తించండి");
+    setScreen("welcome");
+  };
 
-  speak("ముందు మీ ప్రాంతాన్ని గుర్తించండి");
-  setScreen("welcome");
-};
   const goTips = () => setScreen("tips");
-
   const goHelp = () => setScreen("help");
 
   // =============================================
@@ -158,15 +153,14 @@ function App() {
   return (
     <div className="min-h-screen bg-green-50">
 
-      
       <Navbar
-  currentScreen={screen}
-  goHome={goHome}
-  goWeather={goWeather}
-  goResult={goResult}
-  goTips={goTips}
-  goHelp={goHelp}
-/>
+        currentScreen={screen}
+        goHome={goHome}
+        goWeather={goWeather}
+        goResult={goResult}
+        goTips={goTips}
+        goHelp={goHelp}
+      />
 
       {screen === "welcome" &&
         <Screen1Assistant onLocationClick={getLocation} />
@@ -185,19 +179,20 @@ function App() {
       }
 
       {screen === "result" &&
-  <ResultScreen
-    result={prediction}
-    onBack={() => setScreen("weather")}
-    goTips={() => setScreen("tips")}
-  />
-}
+        <ResultScreen
+          result={prediction}
+          onBack={() => setScreen("weather")}
+          goTips={() => setScreen("tips")}
+        />
+      }
 
-{screen === "tips" &&
-  <FarmingTips
-    onBack={() => setScreen("welcome")}
-    goHelp={() => setScreen("help")}
-  />
-}
+      {screen === "tips" &&
+        <FarmingTips
+          onBack={() => setScreen("welcome")}
+          goHelp={() => setScreen("help")}
+        />
+      }
+
       {screen === "help" &&
         <HelpPage onBack={() => setScreen("welcome")} />
       }

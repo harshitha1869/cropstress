@@ -26,13 +26,12 @@ app.post("/weather", async (req, res) => {
     res.status(500).json({ error: "Weather fetch failed" });
   }
 });
-
 app.post("/predict", async (req, res) => {
   console.log("🔥 Request reached Node first");
 
   try {
     const response = await axios.post(
-      "http://localhost:5000/predict",
+      "https://cropstress.onrender.com/predict", // ✅ FIXED
       req.body
     );
 
