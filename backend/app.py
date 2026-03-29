@@ -2,8 +2,6 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pickle
 import os
-import boto3
-from io import BytesIO
 import logging
 import requests
 from datetime import datetime
@@ -18,54 +16,38 @@ logging.basicConfig(level=logging.INFO)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCAL_MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-# Serve React build
 app = Flask(__name__, static_folder="build", static_url_path="")
-
 CORS(app)
 
 # =====================================================
-# LOAD MODEL (AWS OR LOCAL)
+# SAFE MODEL LOADING (NO CRASH)
 # =====================================================
 
-S3_BUCKET = "crop-stress-models-harshitha"
-S3_REGION = "ap-south-1"
-
-AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID")
-AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
-
-def load_from_s3(filename):
-    logging.info(f"Loading {filename} from S3")
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY,
-        region_name=S3_REGION
-    )
-    obj = s3.get_object(Bucket=S3_BUCKET, Key=filename)
-    return pickle.load(BytesIO(obj["Body"].read()))
+model = None
+scaler = None
+feature_columns = None
+label_encoder = None
 
 def load_local(filename):
     path = os.path.join(LOCAL_MODEL_DIR, filename)
-    logging.info(f"Loading {filename} locally")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{filename} not found in models/")
     return pickle.load(open(path, "rb"))
 
 try:
-    if AWS_ACCESS_KEY and AWS_SECRET_KEY:
-        model = load_from_s3("model.pkl")
-        scaler = load_from_s3("scaler.pkl")
-        feature_columns = load_from_s3("feature_columns.pkl")
-        label_encoder = load_from_s3("label_encoder.pkl")
-    else:
-        model = load_local("model.pkl")
-        scaler = load_local("scaler.pkl")
-        feature_columns = load_local("feature_columns.pkl")
-        label_encoder = load_local("label_encoder.pkl")
+    logging.info("Loading model files...")
 
-    logging.info("Model loaded successfully")
+    model = load_local("model.pkl")
+    scaler = load_local("scaler.pkl")
+    feature_columns = load_local("feature_columns.pkl")
+    label_encoder = load_local("label_encoder.pkl")
+
+    logging.info("Model loaded successfully ✅")
 
 except Exception as e:
-    logging.error("Model loading failed")
-    raise e
+    logging.error(f"Model loading failed ❌: {e}")
+    # Do NOT crash app
+    model = None
 
 # =====================================================
 # TELUGU ADVICE
@@ -82,7 +64,16 @@ def get_telugu_advice(stress):
 # WEATHER API CONFIG
 # =====================================================
 
+
 OPENWEATHER_API_KEY = "395baaae1fb6b6e1cbc267d4932db81b"
+
+# =====================================================
+# HEALTH CHECK (IMPORTANT FOR RENDER)
+# =====================================================
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 # =====================================================
 # WEATHER + ML PREDICTION
@@ -90,6 +81,9 @@ OPENWEATHER_API_KEY = "395baaae1fb6b6e1cbc267d4932db81b"
 
 @app.route("/weather", methods=["GET"])
 def weather():
+
+    if model is None:
+        return jsonify({"error": "Model not loaded"}), 500
 
     lat = request.args.get("lat")
     lon = request.args.get("lon")
@@ -100,33 +94,17 @@ def weather():
     try:
         url = (
             "https://api.openweathermap.org/data/2.5/weather"
-            f"?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric&lang=te"
+            f"?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric"
         )
 
-        res = requests.get(url, timeout=(3, 5)).json()
+        res = requests.get(url, timeout=10).json()
 
         if "main" not in res:
             return jsonify({"error": "Weather API failed", "details": res}), 400
 
         temp = res["main"]["temp"]
         humidity = res["main"]["humidity"]
-        feels_like = res["main"]["feels_like"]
-        pressure = res["main"]["pressure"]
-
-        wind_speed = res["wind"]["speed"]
-        wind_deg = res["wind"].get("deg", 0)
-
-        weather_main = res["weather"][0]["main"]
-        description = res["weather"][0]["description"]
-
-        visibility = res.get("visibility", 0)
         rain = res.get("rain", {}).get("1h", 0)
-
-        location = res.get("name")
-        country = res["sys"]["country"]
-
-        sunrise = datetime.fromtimestamp(res["sys"]["sunrise"]).strftime("%H:%M")
-        sunset = datetime.fromtimestamp(res["sys"]["sunset"]).strftime("%H:%M")
 
         input_data = {
             "Day_Of_Year": 150,
@@ -151,19 +129,8 @@ def weather():
         stress = label_encoder.inverse_transform([pred])[0]
 
         return jsonify({
-            "location": location,
-            "country": country,
             "temperature": temp,
-            "feels_like": feels_like,
             "humidity": humidity,
-            "pressure": pressure,
-            "wind_speed": wind_speed,
-            "wind_direction": wind_deg,
-            "weather": weather_main,
-            "description": description,
-            "visibility": visibility,
-            "sunrise": sunrise,
-            "sunset": sunset,
             "rain_1h": rain,
             "stressLevel": stress,
             "teluguAdvice": get_telugu_advice(stress)
@@ -178,6 +145,9 @@ def weather():
 
 @app.route("/predict", methods=["POST"])
 def predict():
+
+    if model is None:
+        return jsonify({"error": "Model not loaded"}), 500
 
     try:
         data = request.json
@@ -217,14 +187,6 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 # =====================================================
-# HEALTH CHECK
-# =====================================================
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-
-# =====================================================
 # SERVE REACT FRONTEND
 # =====================================================
 
@@ -242,8 +204,9 @@ def serve_static(path):
     return send_from_directory(app.static_folder, "index.html")
 
 # =====================================================
-# RUN SERVER
+# RUN SERVER (FIXED FOR RENDER)
 # =====================================================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
