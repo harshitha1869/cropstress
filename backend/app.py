@@ -129,12 +129,21 @@ def weather():
         stress = label_encoder.inverse_transform([pred])[0]
 
         return jsonify({
-            "temperature": temp,
-            "humidity": humidity,
-            "rain_1h": rain,
-            "stressLevel": stress,
-            "teluguAdvice": get_telugu_advice(stress)
-        })
+    "temperature": temp,
+    "humidity": humidity,
+    "rain_1h": rain,
+    "stressLevel": stress,
+    "teluguAdvice": get_telugu_advice(stress),
+
+    # 🔥 ADD THESE
+    "location": res.get("name"),
+    "country": res.get("sys", {}).get("country"),
+    "description": res.get("weather", [{}])[0].get("description"),
+    "wind_speed": res.get("wind", {}).get("speed"),
+    "pressure": res.get("main", {}).get("pressure"),
+    "visibility": res.get("visibility"),
+    "feels_like": res.get("main", {}).get("feels_like"),
+})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
