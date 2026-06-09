@@ -1,39 +1,36 @@
-let selectedVoice = null;
-let voicesLoaded = false;
+export const speak = async (text) => {
+  try {
+    const response = await fetch("/speak", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
 
-// Load voices
-function loadVoices() {
-  const voices = window.speechSynthesis.getVoices();
+    if (!response.ok) {
+      throw new Error("Failed to generate speech");
+    }
 
-  if (!voices.length) return;
+    const blob = await response.blob();
 
-  console.log("Available Voices:");
-  voices.forEach(v => {
-    console.log(`${v.name} - ${v.lang}`);
-  });
+    const audioUrl = URL.createObjectURL(blob);
 
-  // Prefer Telugu
-  selectedVoice =
-    voices.find(v => v.lang === "te-IN") ||
-    voices.find(v => v.lang.startsWith("te")) ||
+    const audio = new Audio(audioUrl);
 
-    // Fallback to English India
-    voices.find(v => v.lang === "en-IN") ||
+    audio.play();
 
-    // Last fallback
-    voices[0];
+    audio.onended = () => {
+      URL.revokeObjectURL(audioUrl);
+    };
 
-  console.log("Selected Voice:", selectedVoice);
+  } catch (error) {
+    console.error("Speech Error:", error);
+  }
+};
 
-  voicesLoaded = true;
-}
-
-// Some browsers load voices asynchronously
-window.speechSynthesis.onvoiceschanged = loadVoices;
-loadVoices();
-
-// Convert English digits to Telugu digits
-function toTeluguDigits(text) {
+// Keep this because WeatherPage.jsx uses it
+export function toTeluguDigits(text) {
   const map = {
     "0": "౦",
     "1": "౧",
@@ -44,34 +41,8 @@ function toTeluguDigits(text) {
     "6": "౬",
     "7": "౭",
     "8": "౮",
-    "9": "౯"
+    "9": "౯",
   };
 
-  return String(text).replace(/[0-9]/g, digit => map[digit]);
+  return String(text).replace(/[0-9]/g, (d) => map[d]);
 }
-
-// Speak function
-export const speak = (text, onStart, onEnd) => {
-
-  if (!voicesLoaded) {
-    setTimeout(() => speak(text, onStart, onEnd), 300);
-    return;
-  }
-
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-
-  utterance.voice = selectedVoice;
-  utterance.lang = "te-IN";
-  utterance.rate = 0.85;
-  utterance.pitch = 1;
-  utterance.volume = 1;
-
-  if (onStart) utterance.onstart = onStart;
-  if (onEnd) utterance.onend = onEnd;
-
-  window.speechSynthesis.speak(utterance);
-};
-
-export { toTeluguDigits };

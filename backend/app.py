@@ -6,6 +6,9 @@ import logging
 import requests
 from datetime import datetime
 from utils.preprocess import preprocess_input
+from gtts import gTTS
+from flask import send_file
+import tempfile
 
 # =====================================================
 # BASIC SETUP
@@ -211,6 +214,33 @@ def serve_static(path):
         return send_from_directory(app.static_folder, path)
 
     return send_from_directory(app.static_folder, "index.html")
+
+@app.route("/speak", methods=["POST"])
+def speak_text():
+    try:
+        data = request.json
+        text = data.get("text", "")
+
+        tts = gTTS(
+            text=text,
+            lang="te",
+            slow=False
+        )
+
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".mp3"
+        )
+
+        tts.save(temp_file.name)
+
+        return send_file(
+            temp_file.name,
+            mimetype="audio/mpeg"
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # =====================================================
 # RUN SERVER (FIXED FOR RENDER)
