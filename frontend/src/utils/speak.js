@@ -1,4 +1,7 @@
 export const speak = async (text) => {
+  console.log("🔊 gTTS SPEAK CALLED");
+  console.log("Text:", text);
+
   try {
     const response = await fetch("/speak", {
       method: "POST",
@@ -8,28 +11,46 @@ export const speak = async (text) => {
       body: JSON.stringify({ text }),
     });
 
+    console.log("Response Status:", response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Backend Error:", errorText);
       throw new Error("Failed to generate speech");
     }
 
     const blob = await response.blob();
 
+    console.log("Audio Blob:", blob);
+
     const audioUrl = URL.createObjectURL(blob);
 
     const audio = new Audio(audioUrl);
 
-    audio.play();
+    audio.onloadeddata = () => {
+      console.log("✅ Audio loaded");
+    };
+
+    audio.onplay = () => {
+      console.log("▶️ Audio playing");
+    };
+
+    audio.onerror = (e) => {
+      console.error("❌ Audio Error:", e);
+    };
 
     audio.onended = () => {
+      console.log("✅ Audio finished");
       URL.revokeObjectURL(audioUrl);
     };
 
+    await audio.play();
+
   } catch (error) {
-    console.error("Speech Error:", error);
+    console.error("❌ Speech Error:", error);
   }
 };
 
-// Keep this because WeatherPage.jsx uses it
 export function toTeluguDigits(text) {
   const map = {
     "0": "౦",
@@ -44,5 +65,5 @@ export function toTeluguDigits(text) {
     "9": "౯",
   };
 
-  return String(text).replace(/[0-9]/g, (d) => map[d]);
+  return String(text).replace(/[0-9]/g, (digit) => map[digit]);
 }
