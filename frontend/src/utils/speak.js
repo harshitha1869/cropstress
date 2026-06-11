@@ -1,8 +1,17 @@
-export const speak = async (text) => {
-  console.log("🔊 gTTS SPEAK CALLED");
-  console.log("Text:", text);
+let currentAudio = null;
 
+export const speak = async (text) => {
   try {
+    console.log("🔊 gTTS SPEAK CALLED");
+    console.log("Text:", text);
+
+    // Stop previous audio if already playing
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+
     const response = await fetch("/speak", {
       method: "POST",
       headers: {
@@ -25,31 +34,40 @@ export const speak = async (text) => {
 
     const audioUrl = URL.createObjectURL(blob);
 
-    const audio = new Audio(audioUrl);
+    currentAudio = new Audio(audioUrl);
 
-    audio.onloadeddata = () => {
+    currentAudio.onloadeddata = () => {
       console.log("✅ Audio loaded");
     };
 
-    audio.onplay = () => {
+    currentAudio.onplay = () => {
       console.log("▶️ Audio playing");
     };
 
-    audio.onerror = (e) => {
+    currentAudio.onerror = (e) => {
       console.error("❌ Audio Error:", e);
     };
 
-    audio.onended = () => {
+    currentAudio.onended = () => {
       console.log("✅ Audio finished");
       URL.revokeObjectURL(audioUrl);
+      currentAudio = null;
     };
 
-    await audio.play();
+    await currentAudio.play();
 
   } catch (error) {
     console.error("❌ Speech Error:", error);
   }
 };
+
+export function stopSpeech() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio = null;
+  }
+}
 
 export function toTeluguDigits(text) {
   const map = {

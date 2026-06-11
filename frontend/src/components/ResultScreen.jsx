@@ -44,7 +44,6 @@ export default function ResultScreen({ result, onBack, goTips }) {
   // 🔥 CLEANUP WHEN PAGE CHANGES
   return () => {
     clearTimeout(timer);
-    window.speechSynthesis.cancel();
   };
 
 }, [safeResult]);
