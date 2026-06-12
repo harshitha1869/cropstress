@@ -93,7 +93,6 @@ function App() {
       return;
     }
 
-    speak("మీ పంట ఒత్తిడి స్థాయిని విశ్లేషిస్తున్నాం");
     setScreen("loading");
 
     // ✅ FIXED HERE
