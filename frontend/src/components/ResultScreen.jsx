@@ -39,7 +39,7 @@ export default function ResultScreen({ result, onBack, goTips }) {
 
   setLastSpeech(message);
 
-  const timer = setTimeout(() => speak(message), 500);
+  //const timer = setTimeout(() => speak(message), 500);
 
   // 🔥 CLEANUP WHEN PAGE CHANGES
   return () => {

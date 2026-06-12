@@ -7,10 +7,6 @@ export default function Screen1Assistant({ onLocationClick }) {
 
   const [isTalking, setIsTalking] = useState(false);
 
-
- 
-  
-
   const handleSpeak = () => {
     speak(
       "మీ పంట ఆరోగ్యాన్ని తెలుసుకుందాం",

@@ -70,7 +70,7 @@ function App() {
           .then(data => {
             setWeatherData(data);
             setScreen("weather");
-            speak("మీ ప్రాంతం వాతావరణ సమాచారం సిద్ధంగా ఉంది");
+            
           })
           .catch(() => {
             speak("సమాచారం పొందలేకపోయాం");
@@ -106,7 +106,7 @@ function App() {
       .then(data => {
         setPrediction(data.stressLevel);
         setScreen("result");
-        speak("విశ్లేషణ పూర్తైంది");
+    
       })
       .catch(() => {
         speak("పంట విశ్లేషణలో సమస్య వచ్చింది");

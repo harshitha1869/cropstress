@@ -149,8 +149,8 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
   // =============================================
   // AUTO SPEAK
   // =============================================
-  useEffect(() => {
-    const timer = setTimeout(() => {
+ // useEffect(() => {
+    /*const timer = setTimeout(() => {
       speakWeather();
     }, 800);
 
@@ -158,7 +158,7 @@ export default function WeatherPage({ weather, onPredict, onBack }) {
       clearTimeout(timer);
       window.speechSynthesis.cancel();
     };
-  }, [lang]);
+  }, [lang]);*/
 
   // =============================================
   // LABELS
